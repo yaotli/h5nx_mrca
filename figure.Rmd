@@ -1,0 +1,150 @@
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r package, message = FALSE, warning = FALSE}
+source( "./functions.R" )
+require( ape )
+require( tidyverse )
+require( ggtree )
+require( lubridate )
+require( ggpubr )
+require( seqinr )
+```
+
+
+
+## ML tree
+
+```{r big ml}
+
+mltre  <- read.beast( "./source/iqtree_c2344_col.tre" )
+mx.tre <- fortify( mltre )
+col.df <- tagExtra( "./source/iqtree_c2344_col.tre" )
+
+colnames( mx.tre )[ 10 ] <- "branch.col"
+mx.tre$branch.col = as.character( mx.tre$branch.col )
+mx.tre$branch.col[ is.na( mx.tre$branch.col ) ] = "black"
+
+mx.tre$branch.col[ match( col.df$id[ ! is.na(col.df$tag) ], mx.tre$label ) ] = 
+  paste0( "#", col.df$tag[ !is.na( col.df$tag ) ] )
+  
+col.list = c( "#77bedb", "#cc79a7", "#d0694a",  "#48a365"  )
+  
+for( i in 1:length(col.list) )
+{
+  r = unique( mx.tre$branch.col )[-1][i]
+  mx.tre$branch.col[ which( mx.tre$branch.col == r ) ] = col.list[ i ]
+}
+  
+
+ml <- 
+ggtree( mltre, right = TRUE, size = 0.3) %<+% mx.tre + aes( color = I(branch.col) ) + 
+  geom_hilight( node = 1561, alpha = 0.2, fill = "yellow" ) +
+  geom_cladelabel( node = 1561, label = "2014-2015", offset.text = .005, angle = 270, hjust = "center") + 
+  geom_cladelabel( node = 1332, label = "2016-2017", offset.text = .005, angle = 270, hjust = "center" ) 
+  
+mll = flip(ml, 1680, 1704)  
+```
+
+## Time-scaled tree (MCC)
+
+
+```{r time-scale tree}
+
+rawtre   <- read.beast( "./beast/pH5_c2344_sub74-c4e8-anno.tre" )
+
+ll <- rep( c( "Jan", "April", "July", "Nov"), 4 )
+ll[ c(1, 5, 9, 13) ] = paste0( ll[ c(1, 5, 9, 13) ], c("\n2013", "\n2014", "\n2015", "\n2016") )
+bb <- unlist( lapply( seq(2013, 2016), 
+                      function(x){ y = c( decimal_date( ymd( paste0( x, "-01-01") ) ), 
+                                          decimal_date( ymd( paste0( x, "-04-01") ) ),
+                                          decimal_date( ymd( paste0( x, "-07-01") ) ),
+                                          decimal_date( ymd( paste0( x, "-10-01") ) ) ) }  ))
+
+tre_mx <- fortify( rawtre )
+
+vl <- data.frame( a1 = c( rep( tre_mx$x[76], 2), rep( tre_mx$x[93], 2), rep( tre_mx$x[83], 2), rep( tre_mx$x[110], 2), rep( tre_mx$x[99], 2)), 
+                  a2 = c( tre_mx$y[76], -Inf, tre_mx$y[93], -Inf, tre_mx$y[83], -Inf, tre_mx$y[110], -Inf, tre_mx$y[99], -Inf ),
+                  c  = c( rep("76",2), rep("93",2), rep("83",2), rep("110",2), rep("99",2) )  )
+vl$a1 = vl$a1 + (2016.303 - max( tre_mx$x ) )
+vl$a2 = 74- vl$a2
+vl$a2[c(2,4,6,8,10)] = -Inf
+vl$a2[7] = 22
+vl$a2[9] = 9
+
+tre_mx[ ncol( tre_mx ) + 1 ] <- NA
+colnames(tre_mx)[31] = "Host"
+tre_mx$Host[ grep( "duck|chicken|turkey|goose|environment", tre_mx$label, ignore.case = TRUE )[ -c(19,26) ] ] = "D"
+tre_mx$Host[ tre_mx$isTip ][ is.na( tre_mx$Host[ tre_mx$isTip ] ) ] = "Wild bird"
+tre_mx$Host[ which( tre_mx$Host == "D" ) ] = NA
+
+
+
+tt = 
+ggtree( rawtre, right = TRUE, mrsd = "2016-04-21", size = 0.8) + 
+  aes( color = states ) + 
+  theme_tree2( axis.text.x     = element_text(),
+               legend.position = c(0.8,0.5), 
+               legend.title    = element_blank() ) +
+  scale_x_continuous( limit  = c(2013.25, 2016.4), 
+                      labels = rep(" ", length(bb) ), 
+                      breaks = bb ) +
+  scale_color_manual( values = c( "#48a365",
+                                  "#7f6e85",
+                                  "#cc79a7",
+                                  "#77bedb",
+                                  "#d0694a" ), 
+                      labels = c( "North America", "China", "Europe", "North Asia", "Taiwan")) + 
+  geom_line( data = vl, aes(  a1,  a2, group = c), inherit.aes = FALSE, linetype = "dashed", color = "gray") 
+  
+ttt =   
+tt %<+% tre_mx + geom_tippoint( aes( shape = Host ), color = "black", size = 1.2) 
+  
+
+
+
+# mrca distribution
+
+mrca_tab <- read.table( "./beast/tmrca_table", header = TRUE )
+mrca_tab <- gather( mrca_tab[, c(2,4,6,8,10)], area, mrca )
+
+mrca_tab$area = factor(x= mrca_tab$area, levels = c("korea", "japan", "europe", "north_am", "taiwan") )
+
+
+m = 
+ggplot( data = mrca_tab, aes( x = 2016.303 - mrca, fill = area )) + 
+  geom_density( color = "transparent", alpha = 0.8) +
+  scale_fill_manual( values = c( "#77bedb",
+                                 "#3ba1cb",
+                                 "#cc79a7",
+                                 "#48a365",
+                                 "#d0694a" ),
+                     labels = c( "Korea", "Japan", "Europe", "North America", "Taiwan")) +
+  theme_classic() + 
+  theme( axis.line.y  = element_blank(),
+         axis.ticks.y = element_blank(),
+         axis.text.y  = element_blank(),
+         axis.title.x = element_blank(),
+         legend.position = c( 0.8, 0.5 ),
+         legend.title = element_blank()) +
+  ylab( "tMRCA" ) + 
+  scale_x_continuous( limit  = c(2013.25, 2016.4), 
+                      labels = ll, 
+                      breaks = bb )
+
+
+```
+
+
+## result
+
+
+```{r figure, warning = FALSE}
+ggarrange( mll, 
+           ggarrange( ttt, m, ncol = 1, nrow = 2, align = 'v', heights = c(1.5,1), labels = c("", "(C)")),
+           ncol = 2, labels = c("(A)", "(B)"), widths = c(1,3) )
+
+```
+
