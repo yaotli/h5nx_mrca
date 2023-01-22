@@ -28,3 +28,4 @@ toremove <- which( as.numeric( str_match( gsub( "'", "", read.nexus( "./source/s
 tip.ac   <- tip.ac[ - toremove ] 
 
 subfastaSeq( AC = TRUE, AC_list = tip.ac, filedir = "./source/pH5_7326_gsgd_1865_cr_rmdP_s.fasta" )
+
